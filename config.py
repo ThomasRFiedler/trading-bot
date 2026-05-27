@@ -150,7 +150,7 @@ CHECK_INTERVAL_MIN        = int(os.getenv("CHECK_INTERVAL_MIN",        "30"))  #
 CRYPTO_REOPT_INTERVAL_MIN = int(os.getenv("CRYPTO_REOPT_INTERVAL_MIN", "5"))
 SCREEN_INTERVAL_DAYS  = int(os.getenv("SCREEN_INTERVAL_DAYS", "7"))    # days between universe screens
 REOPT_INTERVAL_DAYS   = int(os.getenv("REOPT_INTERVAL_DAYS", "30"))    # days between fundamental re-opts
-DEGRADATION_SHARPE    = float(os.getenv("DEGRADATION_SHARPE", "0.5"))  # trigger re-opt below this (live Sharpe)
+DEGRADATION_SHARPE    = float(os.getenv("DEGRADATION_SHARPE", "0.3"))  # trigger re-opt below this (live Sharpe)
 # Minimum days between technical re-optimizations regardless of Sharpe signal.
 # Prevents repeated curve-fitting to recent noise when the strategy is profitable.
 TECH_REOPT_MIN_DAYS   = int(os.getenv("TECH_REOPT_MIN_DAYS", "30"))    # default: re-opt at most once/month

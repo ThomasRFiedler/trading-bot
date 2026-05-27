@@ -209,7 +209,7 @@ class TestDCFEdgeCases:
         fdata["income_stmt"] = pd.DataFrame()
         result = run_dcf(fdata, current_price=100.0)
         assert isinstance(result, dict)
-        assert result["mid"]["intrinsic_value"] == 0.0
+        assert result["mid"]["intrinsic_value"] is None   # no revenue → no valuation, not zero
 
     def test_zero_price_does_not_crash(self):
         fdata = _make_fdata()
