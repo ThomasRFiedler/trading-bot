@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+
+# Runtime files
+*.pid
+*.log
+*.tmp
+
+# Registry runtime data (deployment history, model snapshots)
+registry/history/
+registry/models.json
+registry/rejected/
+registry/schedule.json
+
+# pytest
+.pytest_cache/

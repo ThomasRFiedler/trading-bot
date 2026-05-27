@@ -1,0 +1,20 @@
+version: "1"
+name: trading-agent-sandbox
+
+policy: ./policy.yaml
+
+container:
+  image: python:3.11-slim
+  working_dir: /workspace/Claude/trading-agent
+  mounts:
+    - host: "${WORKSPACE}"
+      container: /workspace
+      mode: rw             # policy.yaml restricts which paths are writable
+  env:
+    - WORKSPACE=/workspace
+    - PYTHONPATH=/workspace/Git/stock-signal-testing
+
+# Run command: openshell sandbox create -- python agent.py [args]
+# Example:     openshell sandbox create -- python agent.py --check
+# Example:     openshell sandbox create -- python agent.py --backtest-only
+# Example:     openshell sandbox create -- python agent.py --optimize-and-deploy

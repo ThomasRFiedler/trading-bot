@@ -1,0 +1,60 @@
+version: "1"
+name: trading-agent-policy
+
+# ---------------------------------------------------------------------------
+# Filesystem permissions
+# ---------------------------------------------------------------------------
+filesystem:
+  read:
+    - "${WORKSPACE}/Git/stock-signal-testing"
+    - "${WORKSPACE}/Git/trading-app/trading.log"
+    - "${WORKSPACE}/Git/trading-app/state.json"
+    - "${WORKSPACE}/Git/trading-app/params"
+    - "${WORKSPACE}/Claude/trading-agent"
+  write:
+    - "${WORKSPACE}/Claude/trading-agent/registry"
+    - "${WORKSPACE}/Git/trading-app/params/latest.json"
+  deny:
+    - "${HOME}/.ssh"
+    - "${HOME}/.aws"
+    - "${HOME}/.env"
+
+# ---------------------------------------------------------------------------
+# Network permissions
+# ---------------------------------------------------------------------------
+network:
+  allow:
+    - host: "127.0.0.1"
+      port: 4002          # IBKR Gateway (paper)
+    - host: "127.0.0.1"
+      port: 4001          # IBKR Gateway (live) — blocked by default, change to allow for live
+    - host: "api.anthropic.com"
+      port: 443           # Claude API (orchestrator LLM calls)
+    - host: "query1.finance.yahoo.com"
+      port: 443           # yahooquery market data
+    - host: "query2.finance.yahoo.com"
+      port: 443
+    - host: "finance.yahoo.com"
+      port: 443
+  deny:
+    - host: "*"           # Block all other outbound connections
+
+# ---------------------------------------------------------------------------
+# Process permissions
+# ---------------------------------------------------------------------------
+process:
+  allowed_executables:
+    - python3
+    - python
+  max_memory_mb: 4096
+  max_cpu_percent: 80
+
+# ---------------------------------------------------------------------------
+# Secrets management
+# ---------------------------------------------------------------------------
+secrets:
+  # Secrets are injected as env vars — never written to disk inside sandbox
+  inject_from_env:
+    - ANTHROPIC_API_KEY
+  redact_in_logs:
+    - ANTHROPIC_API_KEY

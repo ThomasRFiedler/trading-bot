@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-04-04 23:46:52",
+  "tier": [
+    "small"
+  ],
+  "n": 1.0,
+  "top_n": 10,
+  "tickers": [
+    "CSTM",
+    "CRUS",
+    "PEGA",
+    "PTEN",
+    "ACLS",
+    "ALGM"
+  ],
+  "full_ranking": [
+    {
+      "ticker": "CSTM",
+      "fundamental_score": 6.5,
+      "passed_screen": true,
+      "dcf_mid_upside": "+20.8%",
+      "market_cap": 3806085120,
+      "sector": "Basic Materials"
+    },
+    {
+      "ticker": "CRUS",
+      "fundamental_score": 4.5,
+      "passed_screen": true,
+      "dcf_mid_upside": "-24.4%",
+      "market_cap": 7508101120,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "PEGA",
+      "fundamental_score": 4.0,
+      "passed_screen": true,
+      "dcf_mid_upside": "-59.3%",
+      "market_cap": 7233584640,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "PTEN",
+      "fundamental_score": 3.5,
+      "passed_screen": true,
+      "dcf_mid_upside": "-194.1%",
+      "market_cap": 4027292672,
+      "sector": "Energy"
+    },
+    {
+      "ticker": "ACLS",
+      "fundamental_score": 2.5,
+      "passed_screen": true,
+      "dcf_mid_upside": "-71.6%",
+      "market_cap": 2921052160,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "ALGM",
+      "fundamental_score": 2.0,
+      "passed_screen": true,
+      "dcf_mid_upside": "-105.4%",
+      "market_cap": 6040481792,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "NOVT",
+      "fundamental_score": 0.5,
+      "passed_screen": false,
+      "dcf_mid_upside": "-76.0%",
+      "market_cap": 4176428288,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "POWI",
+      "fundamental_score": 0.0,
+      "passed_screen": false,
+      "dcf_mid_upside": "-98.2%",
+      "market_cap": 2906744320,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "FORM",
+      "fundamental_score": -0.5,
+      "passed_screen": false,
+      "dcf_mid_upside": "-94.7%",
+      "market_cap": 8038015488,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "SITM",
+      "fundamental_score": -1.0,
+      "passed_screen": false,
+      "dcf_mid_upside": "-118.2%",
+      "market_cap": 9127385088,
+      "sector": "Technology"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+# Trading agent orchestration layer
+anthropic>=0.40.0
+python-dotenv>=1.0.0
+
+# Inherited from stock-signal-testing (must match that project's versions)
+yahooquery>=2.3.7
+pandas>=2.0.0
+numpy>=1.26.0
+evotorch>=0.5.1
+torch>=2.0.0
+matplotlib>=3.8.0
