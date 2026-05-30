@@ -7,6 +7,7 @@ If config.ADVERSARIAL_REVIEW is True, an additional three-model debate
 (Proposer → Skeptic → Judge) runs after numeric gates pass. The Judge's
 verdict must be "deploy" for the write to proceed.
 """
+import dataclasses
 import json
 import logging
 import os
@@ -129,57 +130,69 @@ def deploy_params(
     passed, failures = _validate(params, metrics, min_trades_override=min_trades_override)
 
     if not passed:
-        return {"deployed": False, "failures": failures, "registry_entry": None, "review": None}
+        return {"deployed": False, "failures": failures, "registry_entry": None, "review": None, "review_status": None}
 
-    # --- Adversarial review (optional, enabled via ADVERSARIAL_REVIEW=true in .env) ---
-    review = None
+    # --- Adversarial review ---
+    review_verdict = None
+    review_status: str | None = None
+
     if config.ADVERSARIAL_REVIEW:
         from tools.adversarial_review_tool import run_adversarial_review
         current_params = config.load_deployed_params(crypto=crypto)
-        review = run_adversarial_review(
+        deployment_context = {
+            "ticker":     ticker or config.TICKER,
+            "interval":   config.INTERVAL,
+            "time_frame": config.TIME_FRAME,
+        }
+        review_verdict = run_adversarial_review(
             params=params,
             metrics=metrics,
+            deployment_context=deployment_context,
             walk_forward_results=walk_forward_results,
             current_params=current_params,
         )
 
-        if review["verdict"] != "deploy":
-            logger.warning(
-                "Adversarial review blocked deployment: %s (confidence=%.2f)",
-                review["verdict"].upper(), review["confidence"],
+        if review_verdict.outcome == "APPROVE":
+            review_status = "approved"
+            logger.info(
+                "Adversarial review APPROVED (confidence=%s).",
+                f"{review_verdict.confidence:.2f}" if review_verdict.confidence is not None else "n/a",
             )
-            # Archive the rejected candidate so it can be audited later
-            _archive_rejected(params, metrics, review, model_type, ticker or config.TICKER)
-            failure_msg = f"Adversarial review [{review['verdict'].upper()}]: {review['reasoning']}"
-            if review.get("needs_more_detail"):
-                failure_msg += f" — {review['needs_more_detail']}"
-            return {
-                "deployed":      False,
-                "failures":      [failure_msg],
-                "registry_entry": None,
-                "review":        review,
-            }
 
-        if review["confidence"] < config.REVIEW_MIN_CONFIDENCE:
-            logger.warning(
-                "Adversarial review confidence %.2f below threshold %.2f — blocking.",
-                review["confidence"], config.REVIEW_MIN_CONFIDENCE,
-            )
-            _archive_rejected(params, metrics, review, model_type, ticker or config.TICKER)
-            return {
-                "deployed": False,
-                "failures": [
-                    f"Adversarial review confidence {review['confidence']:.2f} "
-                    f"below minimum {config.REVIEW_MIN_CONFIDENCE}"
-                ],
-                "registry_entry": None,
-                "review": review,
-            }
+        elif review_verdict.outcome == "REJECT":
+            review_status = "rejected"
+            if config.ADVERSARIAL_STRICT:
+                _archive_rejected(params, metrics, review_verdict, model_type, ticker or config.TICKER)
+                return {
+                    "deployed":       False,
+                    "failures":       [f"Adversarial review REJECTED: {review_verdict.reason}"],
+                    "registry_entry": None,
+                    "review":         review_verdict,
+                    "review_status":  "rejected",
+                }
+            else:
+                logger.warning(
+                    "Adversarial review REJECTED (advisory mode — proceeding): %s",
+                    review_verdict.reason,
+                )
 
-        logger.info(
-            "Adversarial review approved deployment (confidence=%.2f).",
-            review["confidence"],
-        )
+        elif review_verdict.outcome == "ERROR":
+            if config.ADVERSARIAL_FAIL_OPEN:
+                review_status = "error_fail_open"
+                logger.critical(
+                    "[adversarial-review] Review returned ERROR — proceeding under "
+                    "ADVERSARIAL_FAIL_OPEN=true. Deployment has NOT been reviewed. "
+                    "Reason: %s. Set ADVERSARIAL_FAIL_OPEN=false to block on review errors.",
+                    review_verdict.reason,
+                )
+            else:
+                return {
+                    "deployed":       False,
+                    "failures":       [f"Adversarial review ERROR (fail-closed): {review_verdict.reason}"],
+                    "registry_entry": None,
+                    "review":         review_verdict,
+                    "review_status":  None,
+                }
 
     # --- Determine target params file ---
     params_file = config.CRYPTO_PARAMS_FILE if crypto else config.PARAMS_FILE
@@ -208,13 +221,14 @@ def deploy_params(
 
     # --- Build registry entry ---
     entry = {
-        "deployed_at": now,
-        "model_type":  model_type,
-        "ticker":      ticker or config.TICKER,
-        "params":      deploy_payload,
-        "metrics":     metrics,
-        "notes":       notes,
-        "review":      review,   # None when ADVERSARIAL_REVIEW is off
+        "deployed_at":   now,
+        "model_type":    model_type,
+        "ticker":        ticker or config.TICKER,
+        "params":        deploy_payload,
+        "metrics":       metrics,
+        "notes":         notes,
+        "review":        dataclasses.asdict(review_verdict) if review_verdict is not None else None,
+        "review_status": review_status,
     }
 
     # --- Append to registry ---
@@ -235,7 +249,13 @@ def deploy_params(
 
     _signal_trader_reload()
 
-    return {"deployed": True, "failures": [], "registry_entry": entry, "review": review}
+    return {
+        "deployed":       True,
+        "failures":       [],
+        "registry_entry": entry,
+        "review":         review_verdict,
+        "review_status":  review_status,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +285,7 @@ def _signal_trader_reload() -> None:
 
 
 def _archive_rejected(
-    params: dict, metrics: dict, review: dict, model_type: str, ticker: str
+    params: dict, metrics: dict, review: "ReviewVerdict", model_type: str, ticker: str
 ) -> None:
     """Write a rejected candidate to registry/rejected/ for audit."""
     rejected_dir = config.REGISTRY_DIR / "rejected"
@@ -277,7 +297,7 @@ def _archive_rejected(
         "ticker":      ticker,
         "params":      params,
         "metrics":     metrics,
-        "review":      review,
+        "review":      dataclasses.asdict(review),
     }
     name = f"{now[:19].replace(':', '-')}_{model_type}_{ticker}_rejected.json"
     (rejected_dir / name).write_text(json.dumps(entry, indent=2))

@@ -13,6 +13,7 @@ AGENT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(AGENT_ROOT))
 
 from tools.deploy_tool import _validate, deploy_params, _signal_trader_reload
+from tools.adversarial_review_tool import ReviewVerdict
 
 
 # ---------------------------------------------------------------------------
@@ -241,3 +242,153 @@ class TestSignalTraderReload:
 
         assert result["deployed"] is False
         assert signals_sent == []
+
+
+REVIEW_MODULE = "tools.adversarial_review_tool"
+
+
+def _mock_review(outcome: str, reason: str = "test reason", confidence: float = 0.8):
+    """Return a callable that yields a ReviewVerdict — for monkeypatching run_adversarial_review."""
+    def _inner(*args, **kwargs):
+        return ReviewVerdict(outcome=outcome, reason=reason, confidence=confidence)
+    return _inner
+
+
+class TestAdversarialReviewGate:
+    """Behavioral matrix: outcome × strict/advisory × fail-open/fail-closed."""
+
+    # ---- APPROVE --------------------------------------------------------
+
+    def test_approve_deploys_and_status_approved(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("APPROVE"))
+        result = deploy_params(good_params, good_metrics)
+        assert result["deployed"] is True
+        assert result["review_status"] == "approved"
+
+    def test_approve_registry_entry_has_review_status_approved(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("APPROVE"))
+        deploy_params(good_params, good_metrics)
+        registry = json.loads(isolated_config.MODELS_FILE.read_text())
+        assert registry["models"][0]["review_status"] == "approved"
+
+    # ---- REJECT strict --------------------------------------------------
+
+    def test_reject_strict_blocks_deployment(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_STRICT", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("REJECT"))
+        result = deploy_params(good_params, good_metrics)
+        assert result["deployed"] is False
+        assert result["review_status"] == "rejected"
+        assert any("REJECT" in f for f in result["failures"])
+
+    def test_reject_strict_does_not_write_params_file(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_STRICT", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("REJECT"))
+        deploy_params(good_params, good_metrics)
+        assert not isolated_config.PARAMS_FILE.exists()
+
+    # ---- REJECT advisory ------------------------------------------------
+
+    def test_reject_advisory_deploys_with_warning(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_STRICT", False)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("REJECT"))
+        result = deploy_params(good_params, good_metrics)
+        assert result["deployed"] is True
+        assert result["review_status"] == "rejected"
+
+    def test_reject_advisory_registry_entry_has_review_status_rejected(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_STRICT", False)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("REJECT"))
+        deploy_params(good_params, good_metrics)
+        registry = json.loads(isolated_config.MODELS_FILE.read_text())
+        assert registry["models"][0]["review_status"] == "rejected"
+
+    # ---- ERROR fail-open ------------------------------------------------
+
+    def test_error_fail_open_deploys(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_FAIL_OPEN", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("ERROR"))
+        result = deploy_params(good_params, good_metrics)
+        assert result["deployed"] is True
+        assert result["review_status"] == "error_fail_open"
+
+    def test_error_fail_open_emits_critical_log(
+        self, isolated_config, good_params, good_metrics, monkeypatch, caplog
+    ):
+        import logging
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_FAIL_OPEN", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("ERROR"))
+        with caplog.at_level(logging.CRITICAL):
+            deploy_params(good_params, good_metrics)
+        assert any("error_fail_open" in r.message or "ADVERSARIAL_FAIL_OPEN" in r.message
+                   for r in caplog.records if r.levelno == logging.CRITICAL)
+
+    def test_error_fail_open_registry_entry_has_error_fail_open_status(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_FAIL_OPEN", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("ERROR"))
+        deploy_params(good_params, good_metrics)
+        registry = json.loads(isolated_config.MODELS_FILE.read_text())
+        assert registry["models"][0]["review_status"] == "error_fail_open"
+
+    # ---- ERROR fail-closed ----------------------------------------------
+
+    def test_error_fail_closed_blocks_deployment(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_FAIL_OPEN", False)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("ERROR"))
+        result = deploy_params(good_params, good_metrics)
+        assert result["deployed"] is False
+        assert any("ERROR" in f or "fail-closed" in f for f in result["failures"])
+
+    def test_error_fail_closed_does_not_write_params_file(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_FAIL_OPEN", False)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("ERROR"))
+        deploy_params(good_params, good_metrics)
+        assert not isolated_config.PARAMS_FILE.exists()
+
+    # ---- review disabled ------------------------------------------------
+
+    def test_review_disabled_review_status_is_none(
+        self, isolated_config, good_params, good_metrics
+    ):
+        # isolated_config already sets ADVERSARIAL_REVIEW=False
+        result = deploy_params(good_params, good_metrics)
+        assert result["deployed"] is True
+        assert result["review_status"] is None
+
+    def test_review_disabled_registry_entry_review_status_none(
+        self, isolated_config, good_params, good_metrics
+    ):
+        deploy_params(good_params, good_metrics)
+        registry = json.loads(isolated_config.MODELS_FILE.read_text())
+        assert registry["models"][0]["review_status"] is None
