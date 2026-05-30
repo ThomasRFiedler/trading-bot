@@ -63,6 +63,9 @@ Time frame: {time_frame}
 - Max drawdown < {gate_dd:.0%}
 - Overfit gap (train - test Sharpe) < {gate_overfit}
 
+## Gate pass margins (positive = headroom above threshold)
+{gate_summary_json}
+
 Make the strongest honest case for deployment."""
 
 # ---------------------------------------------------------------------------
@@ -105,6 +108,9 @@ Time frame: {time_frame}
 
 ## Currently deployed params (for comparison)
 {current_params_json}
+
+## Gate pass margins (positive = headroom above threshold)
+{gate_summary_json}
 
 ## Proposer's argument
 {proposer_argument}
@@ -162,6 +168,9 @@ Time frame: {time_frame}
 
 ## Walk-forward results
 {wf_json}
+
+## Gate pass margins (positive = headroom above threshold)
+{gate_summary_json}
 
 ## Proposer's argument
 {proposer_argument}

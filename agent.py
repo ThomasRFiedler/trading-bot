@@ -304,8 +304,8 @@ def optimize_and_deploy(crypto: bool = False) -> None:
         )
         if result.get("review"):
             logger.info(
-                f"Adversarial review: {result['review']['verdict'].upper()}  "
-                f"confidence={result['review']['confidence']:.2f}"
+                f"Adversarial review: {result['review']['outcome'].upper()}  "
+                f"confidence={result['review'].get('confidence') or 0.0:.2f}"
             )
     else:
         logger.warning(f"Deployment rejected — {result['failures']}")
@@ -670,19 +670,17 @@ def _run_review_only() -> None:
     logger.info("=" * 60)
     logger.info("ADVERSARIAL REVIEW RESULT")
     logger.info("=" * 60)
-    logger.info("Verdict    : %s", verdict.get("verdict", "unknown").upper())
-    logger.info("Confidence : %.2f", verdict.get("confidence", 0.0))
-    for risk in verdict.get("key_risks", []):
+    logger.info("Verdict    : %s", verdict.outcome)
+    logger.info("Confidence : %s", f"{verdict.confidence:.2f}" if verdict.confidence is not None else "n/a")
+    for risk in verdict.raw_artifacts.get("verdict_data", {}).get("key_risks", []):
         logger.info("Risk       : %s", risk)
-    logger.info("Reasoning  : %s", verdict.get("reasoning", ""))
-    if verdict.get("needs_more_detail"):
-        logger.info("Needs more : %s", verdict["needs_more_detail"])
+    logger.info("Reasoning  : %s", verdict.reason)
     logger.info("-" * 60)
     logger.info("PROPOSER ARGUMENT:")
-    logger.info(verdict.get("proposer_argument", ""))
+    logger.info(verdict.raw_artifacts.get("proposer_argument", ""))
     logger.info("-" * 60)
     logger.info("SKEPTIC REBUTTAL:")
-    logger.info(verdict.get("skeptic_rebuttal", ""))
+    logger.info(verdict.raw_artifacts.get("skeptic_rebuttal", ""))
     logger.info("=" * 60)
 
 

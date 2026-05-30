@@ -68,6 +68,12 @@ class TestParseVerdict:
         assert v.outcome == "APPROVE"
         assert v.confidence is None
 
+    def test_missing_reasoning_field_returns_error(self):
+        raw = '{"verdict": "APPROVE", "confidence": 0.9, "key_risks": []}'
+        v = _parse_verdict(raw)
+        assert v.outcome == "ERROR"
+        assert "raw_judge" in v.raw_artifacts
+
     def test_review_verdict_is_dataclass(self):
         v = ReviewVerdict(outcome="APPROVE", reason="test")
         assert v.outcome == "APPROVE"

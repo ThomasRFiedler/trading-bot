@@ -90,9 +90,20 @@ def _parse_verdict(raw: str) -> ReviewVerdict:
             raw_artifacts={"raw_judge": raw, "parsed": data},
         )
 
+    if "reasoning" not in data:
+        logger.error(
+            "Judge verdict %r is missing required 'reasoning' field (stored in raw_artifacts):\n%s",
+            verdict_str, raw,
+        )
+        return ReviewVerdict(
+            outcome="ERROR",
+            reason="Judge response missing required 'reasoning' field",
+            raw_artifacts={"raw_judge": raw, "parsed": data},
+        )
+
     return ReviewVerdict(
         outcome=verdict_str,
-        reason=str(data.get("reasoning", "")),
+        reason=str(data["reasoning"]),
         confidence=data.get("confidence"),
         raw_artifacts={"verdict_data": data},
     )
@@ -132,6 +143,14 @@ def run_adversarial_review(
     wf_json             = json.dumps(walk_forward_results, indent=2, default=str) if walk_forward_results else "Not run."
     current_params_json = json.dumps(current_params,       indent=2, default=str) if current_params else "No current deployment."
 
+    _sharpe = metrics.get("sharpe_ratio", params.get("sharpe", 0.0))
+    gate_summary_json = json.dumps({
+        "sharpe_margin":      round(_sharpe - config.GATE_MIN_SHARPE, 3),
+        "trades_margin":      metrics.get("total_trades", 0) - config.GATE_MIN_TRADES,
+        "drawdown_headroom":  round(config.GATE_MAX_DRAWDOWN - abs(metrics.get("max_drawdown", 0.0)), 3),
+        "overfit_margin":     round(config.GATE_MAX_OVERFIT_GAP - metrics.get("overfit_gap", 0.0), 3),
+    }, indent=2)
+
     shared_ctx = dict(
         ticker=ticker,
         interval=interval,
@@ -144,6 +163,7 @@ def run_adversarial_review(
         gate_trades=config.GATE_MIN_TRADES,
         gate_dd=config.GATE_MAX_DRAWDOWN,
         gate_overfit=config.GATE_MAX_OVERFIT_GAP,
+        gate_summary_json=gate_summary_json,
     )
 
     try:
