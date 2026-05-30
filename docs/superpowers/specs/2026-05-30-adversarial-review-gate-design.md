@@ -37,7 +37,7 @@ The review function receives a single structured context object:
 |---|---|---|
 | `candidate_params` | dict | weights array, `n`, `stop_loss`, `take_profit`, `sharpe` |
 | `backtest_metrics` | dict | OOS Sharpe, trade count, max drawdown, overfit gap |
-| `gate_summary` | dict | which gates passed/failed and by what margin |
+| `gate_summary` | dict | pass margin for each of the four numeric gates (review only runs after all pass) |
 | `walk_forward_results` | list or None | rolling OOS windows with per-period Sharpe; None if not run |
 | `current_deployed_params` | dict or None | live `latest.json` contents for comparison; None on cold-start |
 | `deployment_context` | dict | `ticker`, `interval`, `time_frame` — required for regime-risk arguments |
@@ -100,6 +100,8 @@ Receives proposer and skeptic arguments. System prompt instructs it to output a 
 | `ADVERSARIAL_FAIL_OPEN` | `true` | `true`: ERROR allows deployment to proceed. `false`: ERROR blocks deployment |
 | `ADVERSARIAL_PROVIDER` | `anthropic` | Reserved for future cross-provider support; inert in v1 |
 
+Rationale for `ADVERSARIAL_FAIL_OPEN=true` default: the adversarial reviewer is a second-layer heuristic on top of four deterministic gates, not the primary safety system. Blocking all deployments on a transient model-service outage turns an auxiliary control into a single point of operational failure. The four numeric gates remain the hard floor; the reviewer adds judgment on top, not instead.
+
 Provider and model settings remain in the existing `config.py`.
 
 **Error handling — explicit at each boundary:**
@@ -115,7 +117,15 @@ Provider and model settings remain in the existing `config.py`.
 
 **Post-decision logging:**
 
-`deploy_params()` records the review artifact (outcome, reason, confidence, raw artifacts) and the policy decision (blocked / warned / proceeded / fail-open) in the deployment log and registry metadata before either blocking or continuing. This makes every deployment auditable.
+`deploy_params()` records the review artifact and policy decision before blocking or continuing. Every deployment record must carry a `review_status` field with one of three values:
+
+| `review_status` value | Meaning |
+|---|---|
+| `approved` | Judge returned APPROVE; deployment proceeded with review confirmation |
+| `rejected` | Judge returned REJECT; deployment blocked (strict) or warned (advisory) |
+| `error_fail_open` | Review returned ERROR and ADVERSARIAL_FAIL_OPEN=true; deployment proceeded without review |
+
+`approved` and `error_fail_open` are never conflated. A fail-open deployment emits a high-severity log event, persists the raw error outcome in registry metadata, and records `review_status=error_fail_open` — it is never silently recorded as equivalent to an approved deployment.
 
 ---
 
