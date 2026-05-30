@@ -19,6 +19,9 @@ _AGENT_ROOT = Path(__file__).resolve().parent.parent
 if str(_AGENT_ROOT) not in sys.path:
     sys.path.insert(0, str(_AGENT_ROOT))
 
+from dataclasses import dataclass, field
+from typing import Literal
+
 import anthropic
 import config
 from agents.review_agent import (
@@ -29,6 +32,14 @@ from agents.review_agent import (
 )
 
 logger = logging.getLogger("app.adversarial_review")
+
+
+@dataclass
+class ReviewVerdict:
+    outcome: Literal["APPROVE", "REJECT", "ERROR"]
+    reason: str
+    confidence: float | None = None
+    raw_artifacts: dict = field(default_factory=dict)
 
 
 def _call(system: str, user: str, model: str, max_tokens: int = 1024) -> str:
@@ -43,32 +54,43 @@ def _call(system: str, user: str, model: str, max_tokens: int = 1024) -> str:
     return response.content[0].text
 
 
-def _parse_verdict(raw: str) -> dict:
+def _parse_verdict(raw: str) -> ReviewVerdict:
     """
     Extract and parse the JSON block from the Judge's response.
-    Falls back to a reject verdict if parsing fails.
+    Parse failure or unrecognized verdict → ERROR (never REJECT).
+    Raw judge output is always logged and stored in raw_artifacts on failure.
     """
-    # Strip markdown fences if present
     match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
     json_str = match.group(1) if match else raw.strip()
 
     try:
-        verdict = json.loads(json_str)
-        # Normalise required fields
-        verdict.setdefault("confidence", 0.5)
-        verdict.setdefault("key_risks", [])
-        verdict.setdefault("reasoning", "")
-        verdict.setdefault("needs_more_detail", None)
-        return verdict
+        data = json.loads(json_str)
     except (json.JSONDecodeError, AttributeError):
-        logger.error("Judge returned unparseable response:\n%s", raw)
-        return {
-            "verdict":          "reject",
-            "confidence":       0.0,
-            "key_risks":        ["Judge response could not be parsed"],
-            "reasoning":        f"JSON parse error. Raw response: {raw[:300]}",
-            "needs_more_detail": None,
-        }
+        logger.error("Judge returned unparseable response (stored in raw_artifacts):\n%s", raw)
+        return ReviewVerdict(
+            outcome="ERROR",
+            reason=f"Judge response could not be parsed. Raw: {raw[:300]}",
+            raw_artifacts={"raw_judge": raw},
+        )
+
+    verdict_str = str(data.get("verdict", "")).upper()
+    if verdict_str not in ("APPROVE", "REJECT"):
+        logger.error(
+            "Judge returned unrecognized verdict %r (stored in raw_artifacts):\n%s",
+            verdict_str, raw,
+        )
+        return ReviewVerdict(
+            outcome="ERROR",
+            reason=f"Unrecognized verdict field: {verdict_str!r}",
+            raw_artifacts={"raw_judge": raw, "parsed": data},
+        )
+
+    return ReviewVerdict(
+        outcome=verdict_str,
+        reason=str(data.get("reasoning", "")),
+        confidence=data.get("confidence"),
+        raw_artifacts={"verdict_data": data},
+    )
 
 
 def run_adversarial_review(
