@@ -66,3 +66,29 @@ class TestLoadDeployedParams:
         isolated_config.PARAMS_FILE.write_text(json.dumps(good_params))
         result = isolated_config.load_deployed_params()
         assert result["weights"] == good_params["weights"]
+
+
+class TestAdversarialPolicyConfig:
+    def test_adversarial_strict_defaults_true(self, monkeypatch):
+        monkeypatch.delenv("ADVERSARIAL_STRICT", raising=False)
+        import importlib, config as cfg
+        importlib.reload(cfg)
+        assert cfg.ADVERSARIAL_STRICT is True
+
+    def test_adversarial_strict_false_via_env(self, monkeypatch):
+        monkeypatch.setenv("ADVERSARIAL_STRICT", "false")
+        import importlib, config as cfg
+        importlib.reload(cfg)
+        assert cfg.ADVERSARIAL_STRICT is False
+
+    def test_adversarial_fail_open_defaults_true(self, monkeypatch):
+        monkeypatch.delenv("ADVERSARIAL_FAIL_OPEN", raising=False)
+        import importlib, config as cfg
+        importlib.reload(cfg)
+        assert cfg.ADVERSARIAL_FAIL_OPEN is True
+
+    def test_adversarial_fail_open_false_via_env(self, monkeypatch):
+        monkeypatch.setenv("ADVERSARIAL_FAIL_OPEN", "false")
+        import importlib, config as cfg
+        importlib.reload(cfg)
+        assert cfg.ADVERSARIAL_FAIL_OPEN is False

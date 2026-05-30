@@ -69,6 +69,8 @@ def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "HISTORY_DIR",        history_dir)
     monkeypatch.setattr(config, "MODELS_FILE",        registry_dir / "models.json")
     monkeypatch.setattr(config, "ADVERSARIAL_REVIEW", False)
+    monkeypatch.setattr(config, "ADVERSARIAL_STRICT",    True)
+    monkeypatch.setattr(config, "ADVERSARIAL_FAIL_OPEN", True)
 
     # Seed an empty registry
     (registry_dir / "models.json").write_text(json.dumps({"models": []}))

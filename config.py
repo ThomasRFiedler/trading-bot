@@ -164,6 +164,8 @@ REVIEW_MODEL_DEBATERS = os.getenv("REVIEW_MODEL_DEBATERS", "claude-sonnet-4-6")
 # Minimum Judge confidence for a "deploy" verdict to proceed.
 # Below this threshold the deployment is blocked even if verdict == "deploy".
 REVIEW_MIN_CONFIDENCE = float(os.getenv("REVIEW_MIN_CONFIDENCE", "0.65"))
+ADVERSARIAL_STRICT    = os.getenv("ADVERSARIAL_STRICT",    "true").lower() == "true"
+ADVERSARIAL_FAIL_OPEN = os.getenv("ADVERSARIAL_FAIL_OPEN", "true").lower() == "true"
 
 
 def load_deployed_params(crypto: bool = False) -> dict | None:
