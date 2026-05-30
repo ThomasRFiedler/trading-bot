@@ -54,6 +54,11 @@ def _call(system: str, user: str, model: str, max_tokens: int = 1024) -> str:
     return response.content[0].text
 
 
+def _sanitize_str(value: object, max_len: int = 64) -> str:
+    """Strip prompt-injectable characters from a string context field."""
+    return re.sub(r"[^\w\s\-\./]", "", str(value))[:max_len]
+
+
 def _parse_verdict(raw: str) -> ReviewVerdict:
     """
     Extract and parse the JSON block from the Judge's response.
@@ -96,38 +101,41 @@ def _parse_verdict(raw: str) -> ReviewVerdict:
 def run_adversarial_review(
     params: dict,
     metrics: dict,
+    deployment_context: dict,
     walk_forward_results: dict | None = None,
     current_params: dict | None = None,
-) -> dict:
+) -> ReviewVerdict:
     """
     Run the full Proposer → Skeptic → Judge debate.
 
     Parameters
     ----------
     params               : Candidate strategy params (weights, n, stop_loss, take_profit)
-    metrics              : Backtest metrics (sharpe_ratio, max_drawdown, total_trades, pnl, overfit_gap)
+    metrics              : Backtest metrics (sharpe_ratio, max_drawdown, total_trades, overfit_gap)
+    deployment_context   : Required dict with keys: ticker, interval, time_frame
     walk_forward_results : Optional walk-forward output dict
-    current_params       : Currently deployed params for comparison (loaded from latest.json)
+    current_params       : Currently deployed params for comparison; None on cold-start
 
     Returns
     -------
-    dict with keys:
-        verdict            : "deploy" | "reject" | "needs_more"
-        confidence         : float 0.0–1.0
-        key_risks          : list[str]
-        reasoning          : str
-        needs_more_detail  : str | None
-        proposer_argument  : str
-        skeptic_rebuttal   : str
+    ReviewVerdict with outcome APPROVE, REJECT, or ERROR
     """
     logger.info("Starting adversarial review...")
 
-    params_json       = json.dumps(params,               indent=2, default=str)
-    metrics_json      = json.dumps(metrics,              indent=2, default=str)
-    wf_json           = json.dumps(walk_forward_results, indent=2, default=str) if walk_forward_results else "Not run."
-    current_params_json = json.dumps(current_params,     indent=2, default=str) if current_params else "No current deployment."
+    # Sanitize string context fields before prompt injection
+    ticker     = _sanitize_str(deployment_context.get("ticker",     ""))
+    interval   = _sanitize_str(deployment_context.get("interval",   ""))
+    time_frame = _sanitize_str(deployment_context.get("time_frame", ""))
+
+    params_json         = json.dumps(params,               indent=2, default=str)
+    metrics_json        = json.dumps(metrics,              indent=2, default=str)
+    wf_json             = json.dumps(walk_forward_results, indent=2, default=str) if walk_forward_results else "Not run."
+    current_params_json = json.dumps(current_params,       indent=2, default=str) if current_params else "No current deployment."
 
     shared_ctx = dict(
+        ticker=ticker,
+        interval=interval,
+        time_frame=time_frame,
         params_json=params_json,
         metrics_json=metrics_json,
         wf_json=wf_json,
@@ -138,60 +146,60 @@ def run_adversarial_review(
         gate_overfit=config.GATE_MAX_OVERFIT_GAP,
     )
 
-    # --- Proposer ---
-    logger.info("  [1/3] Proposer arguing for deployment...")
-    proposer_argument = _call(
-        system=PROPOSER_SYSTEM,
-        user=PROPOSER_USER_TEMPLATE.format(**shared_ctx),
-        model=DEBATER_MODEL,
-        max_tokens=1024,
-    )
-    logger.info("  Proposer done (%d chars)", len(proposer_argument))
+    try:
+        logger.info("  [1/3] Proposer arguing for deployment...")
+        proposer_argument = _call(
+            system=PROPOSER_SYSTEM,
+            user=PROPOSER_USER_TEMPLATE.format(**shared_ctx),
+            model=DEBATER_MODEL,
+            max_tokens=1024,
+        )
+        logger.info("  Proposer done (%d chars)", len(proposer_argument))
 
-    # --- Skeptic ---
-    logger.info("  [2/3] Skeptic challenging deployment...")
-    skeptic_rebuttal = _call(
-        system=SKEPTIC_SYSTEM,
-        user=SKEPTIC_USER_TEMPLATE.format(
-            **shared_ctx,
-            proposer_argument=proposer_argument,
-        ),
-        model=DEBATER_MODEL,
-        max_tokens=1024,
-    )
-    logger.info("  Skeptic done (%d chars)", len(skeptic_rebuttal))
+        logger.info("  [2/3] Skeptic challenging deployment...")
+        skeptic_rebuttal = _call(
+            system=SKEPTIC_SYSTEM,
+            user=SKEPTIC_USER_TEMPLATE.format(**shared_ctx, proposer_argument=proposer_argument),
+            model=DEBATER_MODEL,
+            max_tokens=1024,
+        )
+        logger.info("  Skeptic done (%d chars)", len(skeptic_rebuttal))
 
-    # --- Judge ---
-    logger.info("  [3/3] Judge rendering verdict...")
-    raw_verdict = _call(
-        system=JUDGE_SYSTEM,
-        user=JUDGE_USER_TEMPLATE.format(
-            **shared_ctx,
-            proposer_argument=proposer_argument,
-            skeptic_rebuttal=skeptic_rebuttal,
-        ),
-        model=JUDGE_MODEL,
-        max_tokens=512,
-    )
-    logger.info("  Judge done")
+        logger.info("  [3/3] Judge rendering verdict...")
+        raw_verdict = _call(
+            system=JUDGE_SYSTEM,
+            user=JUDGE_USER_TEMPLATE.format(
+                **shared_ctx,
+                proposer_argument=proposer_argument,
+                skeptic_rebuttal=skeptic_rebuttal,
+            ),
+            model=JUDGE_MODEL,
+            max_tokens=512,
+        )
+        logger.info("  Judge done")
+
+    except Exception as exc:
+        safe_err = str(exc)[:200]
+        logger.error("Adversarial review API call failed: %s", safe_err)
+        return ReviewVerdict(
+            outcome="ERROR",
+            reason=f"API call failed: {safe_err}",
+            raw_artifacts={"exception": safe_err},
+        )
 
     verdict = _parse_verdict(raw_verdict)
-    verdict["proposer_argument"] = proposer_argument
-    verdict["skeptic_rebuttal"]  = skeptic_rebuttal
+    verdict.raw_artifacts["proposer_argument"] = proposer_argument
+    verdict.raw_artifacts["skeptic_rebuttal"]  = skeptic_rebuttal
 
     logger.info(
-        "Adversarial review verdict: %s (confidence=%.2f)",
-        verdict["verdict"].upper(),
-        verdict["confidence"],
+        "Adversarial review verdict: %s (confidence=%s)",
+        verdict.outcome,
+        f"{verdict.confidence:.2f}" if verdict.confidence is not None else "n/a",
     )
-    if verdict["key_risks"]:
-        for risk in verdict["key_risks"]:
-            logger.info("  Risk: %s", risk)
-
     return verdict
 
 
-def review_deployed_params(crypto: bool = False) -> dict:
+def review_deployed_params(crypto: bool = False) -> ReviewVerdict:
     """
     Dry-run review of the currently deployed params (no deployment).
     Used by --review-only in run.sh / agent.py.
@@ -201,15 +209,24 @@ def review_deployed_params(crypto: bool = False) -> dict:
     current = config.load_deployed_params(crypto=crypto)
     if not current:
         logger.error("No deployed params found — nothing to review.")
-        return {"verdict": "reject", "reasoning": "No deployed params found.", "key_risks": []}
+        return ReviewVerdict(
+            outcome="REJECT",
+            reason="No deployed params found.",
+            raw_artifacts={},
+        )
 
     ticker = config.CRYPTO_TICKER if crypto else config.TICKER
     logger.info("Running backtest on deployed params for review...")
     metrics = run_backtest(ticker=ticker, params=current, crypto=crypto)
-
     logger.info("Backtest metrics: %s", json.dumps(metrics, default=str))
+
     return run_adversarial_review(
         params=current,
         metrics=metrics,
+        deployment_context={
+            "ticker":     ticker,
+            "interval":   config.INTERVAL,
+            "time_frame": config.TIME_FRAME,
+        },
         current_params=current,
     )

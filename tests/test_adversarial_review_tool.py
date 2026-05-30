@@ -72,3 +72,52 @@ class TestParseVerdict:
         v = ReviewVerdict(outcome="APPROVE", reason="test")
         assert v.outcome == "APPROVE"
         assert v.raw_artifacts == {}
+
+
+from tools.adversarial_review_tool import run_adversarial_review
+
+GOOD_CONTEXT = {"ticker": "AAPL", "interval": "5m", "time_frame": "60d"}
+GOOD_PARAMS  = {"weights": [1.0]*14, "n": 2.0, "stop_loss": 0.02, "take_profit": 0.04}
+GOOD_METRICS = {"sharpe_ratio": 1.2, "max_drawdown": 0.05, "total_trades": 20, "overfit_gap": 0.3}
+
+APPROVE_RAW = '{"verdict": "APPROVE", "confidence": 0.9, "key_risks": [], "reasoning": "All good."}'
+REJECT_RAW  = '{"verdict": "REJECT",  "confidence": 0.8, "key_risks": ["risk"], "reasoning": "Too risky."}'
+
+
+class TestRunAdversarialReview:
+    def test_returns_review_verdict_on_approve(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.adversarial_review_tool._call",
+            lambda system, user, model, max_tokens=1024: APPROVE_RAW if "Judge" in system else "arg",
+        )
+        v = run_adversarial_review(GOOD_PARAMS, GOOD_METRICS, GOOD_CONTEXT)
+        assert isinstance(v, ReviewVerdict)
+        assert v.outcome == "APPROVE"
+
+    def test_returns_error_on_api_exception(self, monkeypatch):
+        def boom(*args, **kwargs):
+            raise RuntimeError("connection refused")
+        monkeypatch.setattr("tools.adversarial_review_tool._call", boom)
+        v = run_adversarial_review(GOOD_PARAMS, GOOD_METRICS, GOOD_CONTEXT)
+        assert v.outcome == "ERROR"
+        assert "connection refused" in v.reason
+
+    def test_missing_deployment_context_raises(self):
+        with pytest.raises(TypeError):
+            run_adversarial_review(GOOD_PARAMS, GOOD_METRICS)  # missing deployment_context
+
+    def test_none_walk_forward_handled(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.adversarial_review_tool._call",
+            lambda system, user, model, max_tokens=1024: APPROVE_RAW if "Judge" in system else "arg",
+        )
+        v = run_adversarial_review(GOOD_PARAMS, GOOD_METRICS, GOOD_CONTEXT, walk_forward_results=None)
+        assert v.outcome == "APPROVE"
+
+    def test_none_current_params_handled(self, monkeypatch):
+        monkeypatch.setattr(
+            "tools.adversarial_review_tool._call",
+            lambda system, user, model, max_tokens=1024: APPROVE_RAW if "Judge" in system else "arg",
+        )
+        v = run_adversarial_review(GOOD_PARAMS, GOOD_METRICS, GOOD_CONTEXT, current_params=None)
+        assert v.outcome == "APPROVE"
