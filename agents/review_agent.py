@@ -40,6 +40,11 @@ explain why it still clears the bar. The Skeptic will challenge everything."""
 
 PROPOSER_USER_TEMPLATE = """Review this candidate deployment and argue FOR it.
 
+## Deployment context
+Ticker: {ticker}
+Interval: {interval}
+Time frame: {time_frame}
+
 ## Candidate params
 {params_json}
 
@@ -52,7 +57,7 @@ PROPOSER_USER_TEMPLATE = """Review this candidate deployment and argue FOR it.
 ## Currently deployed params (for comparison)
 {current_params_json}
 
-## Deployment gates
+## Deployment gates (all passed — review is qualitative)
 - Sharpe > {gate_sharpe}
 - Total trades >= {gate_trades}
 - Max drawdown < {gate_dd:.0%}
@@ -84,6 +89,11 @@ concerns that aren't in the data. Identify which risks are dealbreakers vs. acce
 
 SKEPTIC_USER_TEMPLATE = """Review this candidate deployment and challenge it.
 
+## Deployment context
+Ticker: {ticker}
+Interval: {interval}
+Time frame: {time_frame}
+
 ## Candidate params
 {params_json}
 
@@ -112,32 +122,37 @@ in this exact format:
 
 ```json
 {
-  "verdict": "deploy" | "reject" | "needs_more",
+  "verdict": "APPROVE" | "REJECT",
   "confidence": <float 0.0–1.0>,
   "key_risks": ["<risk 1>", "<risk 2>", ...],
-  "reasoning": "<2–4 sentence explanation of your decision>",
-  "needs_more_detail": "<if verdict is needs_more: describe the specific additional check required, else null>"
+  "reasoning": "<2–4 sentence explanation of your decision>"
 }
 ```
 
 Verdict definitions:
-- "deploy"     — the evidence clearly supports deployment; risks are acceptable
-- "reject"     — risks identified by the Skeptic are material enough to block deployment
-- "needs_more" — the debate is inconclusive; specify what additional data would resolve it
-                 (e.g. "run walk-forward with 8 windows", "backtest on alternate ticker")
+- "APPROVE" — the evidence clearly supports deployment; risks are acceptable
+- "REJECT"  — risks identified by the Skeptic are material enough to block deployment,
+               OR you are substantively uncertain. Express uncertainty as REJECT with
+               low confidence and a clear reason — do not abstain.
 
 Confidence guidance:
 - 0.9+  : overwhelming evidence one way
 - 0.7–0.9: clear preponderance
 - 0.5–0.7: marginal; lean one way but risks are real
-- <0.5  : do not use — emit needs_more instead
+- <0.5  : always REJECT — do not approve at this confidence level
 
 Rules:
 - You cannot override numeric gate failures — those are handled upstream.
-- A "deploy" with confidence < 0.65 must list at least 2 key_risks.
-- Output ONLY the JSON block. No preamble, no trailing text."""
+- An "APPROVE" with confidence < 0.65 must list at least 2 key_risks.
+- Output ONLY the JSON block. No preamble, no trailing text.
+- Valid verdicts are APPROVE and REJECT only. Do not output any other value."""
 
 JUDGE_USER_TEMPLATE = """Render your verdict on this deployment.
+
+## Deployment context
+Ticker: {ticker}
+Interval: {interval}
+Time frame: {time_frame}
 
 ## Candidate params
 {params_json}
