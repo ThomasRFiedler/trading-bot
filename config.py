@@ -161,9 +161,6 @@ TECH_REOPT_MIN_DAYS   = int(os.getenv("TECH_REOPT_MIN_DAYS", "30"))    # default
 ADVERSARIAL_REVIEW    = os.getenv("ADVERSARIAL_REVIEW", "false").lower() == "true"
 REVIEW_MODEL_JUDGE    = os.getenv("REVIEW_MODEL_JUDGE",    "claude-opus-4-6")
 REVIEW_MODEL_DEBATERS = os.getenv("REVIEW_MODEL_DEBATERS", "claude-sonnet-4-6")
-# Minimum Judge confidence for a "deploy" verdict to proceed.
-# Below this threshold the deployment is blocked even if verdict == "deploy".
-REVIEW_MIN_CONFIDENCE = float(os.getenv("REVIEW_MIN_CONFIDENCE", "0.65"))
 ADVERSARIAL_STRICT    = os.getenv("ADVERSARIAL_STRICT",    "true").lower() == "true"
 ADVERSARIAL_FAIL_OPEN = os.getenv("ADVERSARIAL_FAIL_OPEN", "true").lower() == "true"
 
