@@ -303,9 +303,10 @@ def optimize_and_deploy(crypto: bool = False) -> None:
             f"Trades={metrics['total_trades']}  DD={metrics['max_drawdown']:.1%}"
         )
         if result.get("review"):
+            rv = result["review"]
             logger.info(
-                f"Adversarial review: {result['review']['outcome'].upper()}  "
-                f"confidence={result['review'].get('confidence') or 0.0:.2f}"
+                f"Adversarial review: {rv.outcome}  "
+                f"confidence={rv.confidence or 0.0:.2f}"
             )
     else:
         logger.warning(f"Deployment rejected — {result['failures']}")

@@ -277,6 +277,17 @@ class TestAdversarialReviewGate:
         registry = json.loads(isolated_config.MODELS_FILE.read_text())
         assert registry["models"][0]["review_status"] == "approved"
 
+    def test_approve_result_review_field_is_verdict_with_attribute_access(
+        self, isolated_config, good_params, good_metrics, monkeypatch
+    ):
+        monkeypatch.setattr(isolated_config, "ADVERSARIAL_REVIEW", True)
+        monkeypatch.setattr(f"{REVIEW_MODULE}.run_adversarial_review", _mock_review("APPROVE", confidence=0.9))
+        result = deploy_params(good_params, good_metrics)
+        rv = result["review"]
+        assert rv.outcome == "APPROVE"
+        assert rv.confidence == 0.9
+        assert isinstance(rv.reason, str)
+
     # ---- REJECT strict --------------------------------------------------
 
     def test_reject_strict_blocks_deployment(
